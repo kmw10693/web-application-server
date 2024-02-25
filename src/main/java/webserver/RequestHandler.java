@@ -14,6 +14,7 @@ import model.User;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 import util.HttpRequestUtils;
+import util.IOUtils;
 
 public class RequestHandler extends Thread {
     private static final Logger log = LoggerFactory.getLogger(RequestHandler.class);
@@ -32,11 +33,23 @@ public class RequestHandler extends Thread {
         try (InputStream in = connection.getInputStream(); OutputStream out = connection.getOutputStream()) {
 
             // TODO 사용자 요청에 대한 처리는 이 곳에 구현하면 된다.
-            List<String> strings = getLines(in);
 
+            InputStreamReader reader = new InputStreamReader(in);
+            BufferedReader br = new BufferedReader(reader);
+
+            List<String> strings = getLines(br);
             String line = strings.get(0);
             String[] tokens = line.split(" ");
 
+            // POST 방식의 회원가입
+            if(tokens[0].contains("POST")) {
+                String[] split = strings.get(3).split(": ");
+                String s = IOUtils.readData(br, Integer.parseInt(split[1]));
+                User user = createUser(s);
+
+            }
+
+            // GET 방식의 회원가입
             int index = tokens[1].indexOf("?");
 
             if(index != -1) {
@@ -54,9 +67,9 @@ public class RequestHandler extends Thread {
         }
     }
 
-    private void createUser(String params) {
+    private User createUser(String params) {
         Map<String, String> stringStringMap = HttpRequestUtils.parseQueryString(params);
-        User user = new User(
+        return new User(
                 stringStringMap.get("userId"),
                 stringStringMap.get("password"),
                 stringStringMap.get("name"),
@@ -67,7 +80,7 @@ public class RequestHandler extends Thread {
     private String getParams(String[] tokens) {
         int index = tokens[1].indexOf("?");
         String requestPath = tokens[1].substring(0, index);
-        return tokens[1].substring(index+1);
+        return tokens[1].substring(index + 1);
     }
 
     private byte[] getFilebody(String[] tokens) throws IOException {
@@ -76,17 +89,15 @@ public class RequestHandler extends Thread {
         return body;
     }
 
-    private List<String> getLines(InputStream in) {
-        InputStreamReader reader = new InputStreamReader(in);
-        BufferedReader br = new BufferedReader(reader);
-
+    private List<String> getLines(BufferedReader br) {
         List<String> strings = new ArrayList<>();
         try {
             String str;
 
-            while(!(str = br.readLine()).equals("")) {
+            while (!(str = br.readLine()).equals("")) {
                 strings.add(str);
             }
+
         } catch (IOException e) {
             throw new RuntimeException(e);
         }
