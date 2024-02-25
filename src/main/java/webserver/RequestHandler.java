@@ -45,7 +45,9 @@ public class RequestHandler extends Thread {
             if(tokens[0].contains("POST")) {
                 String[] split = strings.get(3).split(": ");
                 String s = IOUtils.readData(br, Integer.parseInt(split[1]));
-                User user = createUser(s);
+
+                DataOutputStream dos = new DataOutputStream(out);
+                response302Header(dos);
 
             }
 
@@ -55,6 +57,8 @@ public class RequestHandler extends Thread {
             if(index != -1) {
                 String params = getParams(tokens);
                 createUser(params);
+                DataOutputStream dos = new DataOutputStream(out);
+                response302Header(dos);
             }
 
             byte[] body = getFilebody(tokens);
@@ -109,6 +113,16 @@ public class RequestHandler extends Thread {
             dos.writeBytes("HTTP/1.1 200 OK \r\n");
             dos.writeBytes("Content-Type: text/html;charset=utf-8\r\n");
             dos.writeBytes("Content-Length: " + lengthOfBodyContent + "\r\n");
+            dos.writeBytes("\r\n");
+        } catch (IOException e) {
+            log.error(e.getMessage());
+        }
+    }
+
+    private void response302Header(DataOutputStream dos) {
+        try {
+            dos.writeBytes("HTTP/1.1 302 Found \r\n");
+            dos.writeBytes("Location: http://localhost:8080/index.html\r\n");
             dos.writeBytes("\r\n");
         } catch (IOException e) {
             log.error(e.getMessage());
