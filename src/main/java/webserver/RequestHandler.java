@@ -65,11 +65,11 @@ public class RequestHandler extends Thread {
                     User user = DataBase.findUserById(map.get("userId"));
                     if(user.getPassword().equals(map.get("password"))) {
                         DataOutputStream dos = new DataOutputStream(out);
-                        responseLoginHeader(dos);
+                        response302LoginHeader(dos);
                     }
                     else {
                         DataOutputStream dos = new DataOutputStream(out);
-                        responseLoginFailHeader(dos);
+                        response302FailHeader(dos);
                     }
 
                 } catch (NullPointerException e) {
@@ -147,28 +147,6 @@ public class RequestHandler extends Thread {
         }
     }
 
-    private void responseLoginHeader(DataOutputStream dos) {
-        try {
-            dos.writeBytes("HTTP/1.1 200 OK \r\n");
-            dos.writeBytes("Content-Type: text/html\r\n");
-            dos.writeBytes("Set-Cookie: logined=true");
-            dos.writeBytes("\r\n");
-        } catch (IOException e) {
-            log.error(e.getMessage());
-        }
-    }
-
-    private void responseLoginFailHeader(DataOutputStream dos) {
-        try {
-            dos.writeBytes("HTTP/1.1 200 OK \r\n");
-            dos.writeBytes("Content-Type: text/html\r\n");
-            dos.writeBytes("Set-Cookie: logined=false");
-            dos.writeBytes("\r\n");
-        } catch (IOException e) {
-            log.error(e.getMessage());
-        }
-    }
-
     private void response302Header(DataOutputStream dos) {
         try {
             dos.writeBytes("HTTP/1.1 302 Found \r\n");
@@ -179,10 +157,24 @@ public class RequestHandler extends Thread {
         }
     }
 
+    private void response302LoginHeader(DataOutputStream dos) {
+        try {
+            dos.writeBytes("HTTP/1.1 303 Found \r\n");
+            dos.writeBytes("Location: http://localhost:8080/index.html\r\n");
+            dos.writeBytes("Content-Type: text/html\r\n");
+            dos.writeBytes("Set-Cookie: logined=true; Path=/; \r\n");
+            dos.writeBytes("\r\n");
+        } catch (IOException e) {
+            log.error(e.getMessage());
+        }
+    }
+
     private void response302FailHeader(DataOutputStream dos) {
         try {
             dos.writeBytes("HTTP/1.1 302 Found \r\n");
-            dos.writeBytes("Location: http://localhost:8080/login_failed.html\r\n");
+            dos.writeBytes("Location: http://localhost:8080/index.html\r\n");
+            dos.writeBytes("Content-Type: text/html\r\n");
+            dos.writeBytes("Set-Cookie: logined=false; Path=/;\n");
             dos.writeBytes("\r\n");
         } catch (IOException e) {
             log.error(e.getMessage());
