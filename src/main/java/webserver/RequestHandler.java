@@ -3,18 +3,15 @@ package webserver;
 import java.io.*;
 import java.net.Socket;
 import java.nio.file.Files;
-import java.nio.file.Path;
-import java.nio.file.Paths;
 import java.util.*;
 
 import db.DataBase;
+import http.HttpRequest;
 import model.User;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 import util.HttpRequestUtils;
 import util.IOUtils;
-
-import javax.xml.crypto.Data;
 
 public class RequestHandler extends Thread {
     private static final Logger log = LoggerFactory.getLogger(RequestHandler.class);
@@ -32,63 +29,69 @@ public class RequestHandler extends Thread {
 
         try (InputStream in = connection.getInputStream(); OutputStream out = connection.getOutputStream()) {
 
-            // TODO 사용자 요청에 대한 처리는 이 곳에 구현하면 된다.
-            InputStreamReader reader = new InputStreamReader(in);
-            BufferedReader br = new BufferedReader(reader);
+            HttpRequest httpRequest = new HttpRequest(in);
+            BufferedReader br = httpRequest.getBuffedReader();
 
-            List<String> strings = getLines(br);
+            String line = br.readLine();
 
-            String line = strings.get(0);
+            if (line == null) {
+                return;
+            }
+
             String[] tokens = line.split(" ");
+            int contentLength = 0;
+            boolean isChecked = false;
 
-            // POST 방식의 회원가입`
-            if (tokens[1].equals("/user/create")) {
-                String[] split = strings.get(3).split(": ");
-                String s = IOUtils.readData(br, Integer.parseInt(split[1]));
-                createUser(s);
+            while (!line.equals("")) {
+                line = br.readLine();
+
+                if (line.contains("Content-Length")) {
+                    String[] contents = line.split(":");
+                    contentLength = Integer.parseInt(contents[1].trim());
+                }
+
+                if (line.contains("Cookie")) {
+                    String[] contents = line.split(":");
+                    Map<String, String> cookies = HttpRequestUtils.parseCookies(contents[1].trim());
+                    String value = cookies.get("logined");
+                    if (value == null) {
+                        isChecked = false;
+                    } else isChecked = Boolean.parseBoolean(value);
+                }
+            }
+            String url = tokens[1];
+
+            if (url.equals("/user/create")) {
+                String data = IOUtils.readData(br, contentLength);
+                createUser(data);
 
                 DataOutputStream dos = new DataOutputStream(out);
                 response302Header(dos);
-            }
-
-            else if (tokens[1].equals("/user/login")) {
-                String[] split = strings.get(3).split(": ");
-                String s = IOUtils.readData(br, Integer.parseInt(split[1]));
-
-                Map<String, String> map = HttpRequestUtils.parseQueryString(s);
+            } else if (url.equals("/user/login")) {
+                String data = IOUtils.readData(br, contentLength);
+                Map<String, String> userQuery = HttpRequestUtils.parseQueryString(data);
 
                 try {
-                    User user = DataBase.findUserById(map.get("userId"));
-                    if (user.getPassword().equals(map.get("password"))) {
+                    User user = DataBase.findUserById(userQuery.get("userId"));
+
+                    if (user.getPassword().equals(userQuery.get("password"))) {
+
                         DataOutputStream dos = new DataOutputStream(out);
                         response302LoginHeader(dos);
+
                     } else {
                         DataOutputStream dos = new DataOutputStream(out);
                         response302FailHeader(dos);
                     }
 
                 } catch (NullPointerException e) {
-                    log.error(e.getMessage());
                     DataOutputStream dos = new DataOutputStream(out);
                     response302FailHeader(dos);
                 }
-
-            }
-            // 사용자 목록 출력
-            else if (tokens[1].equals("/user/list")) {
+            } else if (url.equals("/user/list")) {
                 try {
 
-                    Map<String, String> rawTokens = null;
-                    for (String s : strings) {
-                        System.out.println(s);
-                        String[] token = s.split(": ");
-                        if (token[0].equals("Cookie")) {
-                            rawTokens = HttpRequestUtils.parseCookies(token[1]);
-                        }
-                    }
-                    String token = rawTokens.get("logined");
-
-                    if (Boolean.parseBoolean(token)) {
+                    if (isChecked) {
                         StringBuilder sb = new StringBuilder();
                         Collection<User> users = DataBase.findAll();
 
@@ -111,33 +114,21 @@ public class RequestHandler extends Thread {
                     responseNotLoginHeader(dos);
 
                 } catch (NullPointerException e) {
-                    log.error(e.getMessage());
                     DataOutputStream dos = new DataOutputStream(out);
                     responseNotLoginHeader(dos);
                 }
 
+            } else if (url.endsWith("css")) {
+                DataOutputStream dos = new DataOutputStream(out);
+                byte[] body = getFilebody(tokens);
+                response200cssHeader(dos, body.length);
+                responseBody(dos, body);
+            } else {
+                DataOutputStream dos = new DataOutputStream(out);
+                byte[] body = getFilebody(tokens);
+                response200Header(dos, body.length);
+                responseBody(dos, body);
             }
-
-            for (String s : strings) {
-                System.out.println(s);
-
-                String[] restTokens = s.split(" ");
-                if(restTokens[0].endsWith("GET") && restTokens[1].endsWith("css")) {
-                    DataOutputStream dos = new DataOutputStream(out);
-                    byte[] filebody = getFilebody(restTokens);
-                    response200cssHeader(dos, filebody.length);
-                    responseBody(dos, filebody);
-                }
-                else if(restTokens[0].endsWith("GET")){
-                    System.out.println("=================");
-                    System.out.println(restTokens[1]);
-                    DataOutputStream dos = new DataOutputStream(out);
-                    byte[] filebody = getFilebody(restTokens);
-                    response200Header(dos, filebody.length);
-                    responseBody(dos, filebody);
-                }
-            }
-
 
         } catch (IOException e) {
             log.error(e.getMessage());
@@ -164,24 +155,10 @@ public class RequestHandler extends Thread {
 
     private byte[] getFilebody(String[] tokens) throws IOException {
         byte[] body;
-        body = Files.readAllBytes(new File(LinuxDir + tokens[1]).toPath());
+        body = Files.readAllBytes(new File("./webapp" + tokens[1]).toPath());
         return body;
     }
 
-    private List<String> getLines(BufferedReader br) {
-        List<String> strings = new ArrayList<>();
-        try {
-            String str;
-
-            while (!(str = br.readLine()).equals("")) {
-                strings.add(str);
-            }
-
-        } catch (IOException e) {
-            throw new RuntimeException(e);
-        }
-        return strings;
-    }
 
     private void response200Header(DataOutputStream dos, int lengthOfBodyContent) {
         try {
