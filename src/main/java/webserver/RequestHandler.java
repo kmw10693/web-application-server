@@ -7,6 +7,7 @@ import java.util.*;
 
 import db.DataBase;
 import http.HttpRequest;
+import http.HttpResponse;
 import model.User;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
@@ -15,8 +16,7 @@ import util.IOUtils;
 
 public class RequestHandler extends Thread {
     private static final Logger log = LoggerFactory.getLogger(RequestHandler.class);
-    private static final String LinuxDir = "./webapp";
-
+    private final Map<String, Controller> controllerMap = new HashMap<>();
     private Socket connection;
 
     public RequestHandler(Socket connectionSocket) {
@@ -28,8 +28,12 @@ public class RequestHandler extends Thread {
                 connection.getPort());
 
         try (InputStream in = connection.getInputStream(); OutputStream out = connection.getOutputStream()) {
+            controllerMap.put("/user/create", new UserCreate(out));
+            controllerMap.put("/user/login", new UserLogin(out));
+            controllerMap.put("/user/list", new UserList(out));
 
             HttpRequest httpRequest = new HttpRequest(in);
+            HttpResponse httpResponse = new HttpResponse(out);
             BufferedReader br = httpRequest.getBuffedReader();
 
             String line = br.readLine();
@@ -62,54 +66,20 @@ public class RequestHandler extends Thread {
             String url = tokens[1];
 
             if (url.equals("/user/create")) {
-                String data = IOUtils.readData(br, contentLength);
-                createUser(data);
+                Controller controller = controllerMap.get("user/create");
+                controller.service(httpRequest, httpResponse);
 
-                DataOutputStream dos = new DataOutputStream(out);
-                response302Header(dos);
             } else if (url.equals("/user/login")) {
-                String data = IOUtils.readData(br, contentLength);
-                Map<String, String> userQuery = HttpRequestUtils.parseQueryString(data);
+                Controller controller = controllerMap.get("user/login");
+                controller.service(httpRequest, httpResponse);
 
-                try {
-                    User user = DataBase.findUserById(userQuery.get("userId"));
-
-                    if (user.getPassword().equals(userQuery.get("password"))) {
-
-                        DataOutputStream dos = new DataOutputStream(out);
-                        response302LoginHeader(dos);
-
-                    } else {
-                        DataOutputStream dos = new DataOutputStream(out);
-                        response302FailHeader(dos);
-                    }
-
-                } catch (NullPointerException e) {
-                    DataOutputStream dos = new DataOutputStream(out);
-                    response302FailHeader(dos);
-                }
             } else if (url.equals("/user/list")) {
+                Controller controller = controllerMap.get("user/list");
                 try {
 
                     if (isChecked) {
-                        StringBuilder sb = new StringBuilder();
-                        Collection<User> users = DataBase.findAll();
-
-                        sb.append("<table border='1'>");
-                        for (User user : users) {
-                            sb.append("<tr>");
-                            sb.append("<td>" + user.getUserId() + "</td>");
-                            sb.append("<td>" + user.getName() + "</td>");
-                            sb.append("<td>" + user.getEmail() + "</td>");
-                            sb.append("</tr>");
-                        }
-                        sb.append("</table>");
-                        byte[] body = sb.toString().getBytes();
-                        DataOutputStream dos = new DataOutputStream(out);
-                        response200Header(dos, body.length);
-                        responseBody(dos, body);
+                        controller.service(httpRequest, httpResponse);
                     }
-
                     DataOutputStream dos = new DataOutputStream(out);
                     responseNotLoginHeader(dos);
 
